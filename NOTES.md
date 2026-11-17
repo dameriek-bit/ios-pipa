@@ -1264,3 +1264,21 @@ First pipa boots with the full chain: launchd survives, root mounts, iOS 16.6.1 
 (NOTE: no libsweet-bt injection on 20G81; no sweettouch_debug unless calibrating; no sweetgpudelay past boot; pipafb_noconsole does NOT exist — sweetfb_noconsole=1 is the real arg.)
 
 **shim/out/ inventory:** shim-boot.img (.nop.fixed, console off — current best), shim-boot-cal.img (console on + touch debug — the calibration instrument), shim-boot-o2..o8 (BROKEN — clobbered loads), shim-boot-readout/diag (older). xnu/out/: .nop.fixed (current best kernel), .nop (the tool's parse+clamps+scale, correct but no flip/shift), .nop.o2-o8 (broken), .nop.bak_pre532 (the pre-orient backup), kernel.development.sweet (the clean CI kernel).
+
+### >>> PIPA SESSION 2026-11-18: touch mapping largely fixed — the boot-args fault, the axes truth, the split-half residual <<<
+
+**THE BIG FIX (device-verified, "OMG IT WORKED"):** every cmdline carried `pipafb_native=1` — **a ghost arg no patch reads**. The real args: `sweetfb_native=1 sweetfb_fit=0` (patch 0152's SweetHID: `fFit = !native && fit != 0` — without them fFit defaulted TRUE and apollo's 24/25 fit-band math ran on pipa's full-canvas touches = the tap displacement). Plus `sweetfb_hz=60` (boot 39's documented smoothness fix — the panel copy defaults to 10 Hz).
+
+**THE AXES TRUTH (gesture-verified):** raw Y is **TOP-DOWN** (physical top = raw ~52) — the cal note's "top=2875" was wrong (imprecise corner presses). The Y flip the previous session planned was never needed; a flip build broke the corner gestures (bottom-right swipe-up opened Control Center = delivered inverted). Raw X is **MIRRORED vs the panel** (left↔right swapped with the Y direction settled). X straight + Y top-down + gestures = consistent.
+
+**TOUCH MAP (current, in tools/patch_xnu_pipa_yflip.py — reproducible from kernel.development.sweet via patch_xnu_nt36532.py then this script):** x′=x−16, y′=y−52 (the measured glass span 16..1771 / 52..2875 — imprecise corners, approximate), nx=(x′)<<16/1755, ny=(y′)<<16/2823. Parameterized: NVT_SPAN_LEFT/SPAN_RIGHT/Y_TOP/Y_BOTTOM.
+
+**THE REAL ADT STEP:** DeviceTree.d22ap.im4p extracted (DER+LZFSE, pyliblzfse — the module is `liblzfse`) → research/ipsw-x/d22ap.adt (real /product with haptics). Booting WITH it (phone idiom + subtype 2388) made no difference to touch (tested); kept out for now — if used later, artwork-device-idiom conflicts with the iPad subtype (phone 0 + iPad 2388 = inconsistent identity).
+
+**WALLPAPER FIXED (device-verified):** tools/wallpaper-files.py (HEIC→PNG twins; libheif rejects iPadOS-generated HEICs — use ffmpeg; the iPhone root's HEICs convert fine with heif-convert) → 63 files/46 MiB in 2 lists; the lock-screen wallpaper works.
+
+**BOOT STABILITY:** bootfix-20g81.txt must be carried EVERY boot (bluetoothd logo deadlock). Battery deaths = hard power cuts; the journaled root usually replays (sig 15cb reflash if hung).
+
+**RETIRED (panicked twice):** the piecewise left-half Y fix as a binary patch — the dead-pen-path overwrite + the IOLog/lock call at 0xAEDF88-8c (`ldr x0,[x19,#168]; bl 0x371ee4` = a LOCK — do NOT remove!) → "handshake structure not initialized" + mutex panics. **The residual: the left half of the glass delivers Y one row HIGH (FaceTime→TV, Calendar→Podcasts, Wallet→Weather — one row up, same column; right half correct; center exact) = the split-sensor calibration. THE FIX = SOURCE LEVEL: patch 0171 (SweetHID.cpp piecewise Y by X half + bounds), CI-built.**
+
+**Also verified:** the Xiaomi pipa-t-oss nt36532 driver (sparse-cloned to /tmp/pipa-oss) parses points byte-identically to our tool (id=raw>>3, event=raw&7∈{1,2}, 16-bit LE /10 — wait: Xiaomi reports the RAW SR value UNdivided with ABS range abs_max×10−1; our /10 + /1800 normalize ≈ equivalent). Xiaomi gets abs_x/y_max from FWINFO at runtime. No touch-mapping boot args exist (sweettouchmux = SPI pinmux, sweettouchse = SE select).

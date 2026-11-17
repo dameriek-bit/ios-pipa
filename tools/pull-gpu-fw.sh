@@ -18,7 +18,7 @@ src=/vendor/firmware
 
 command -v adb >/dev/null 2>&1 || { echo "pull-gpu-fw.sh: adb is not installed" >&2; exit 1; }
 state=$(adb get-state 2>/dev/null | tr -d '\r' || true)
-[ "$state" = recovery ] || { echo "pull-gpu-fw.sh: the phone is not in recovery (adb get-state: ${state:-none}); fastboot boot recovery/recovery.img, wait, run again" >&2; exit 1; }
+[ "$state" = recovery -o "$state" = device ] || { echo "pull-gpu-fw.sh: the phone is not in recovery (adb get-state: ${state:-none}); fastboot boot recovery/recovery.img, wait, run again" >&2; exit 1; }
 
 # /vendor may need mounting in recovery.
 if [ "$(adb shell "[ -e $src/${files[0]} ] && echo yes" 2>/dev/null | tr -d '\r')" != yes ]; then

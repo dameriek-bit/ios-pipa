@@ -23,7 +23,7 @@ mkdir -p "$out"
 
 if [ -n "${FRESH:-}" ] || [ ! -s "$img" ]; then
 	state=$(adb get-state 2>/dev/null | tr -d '\r' || true)
-	[ "$state" = recovery ] || { echo "pull-bt-fw.sh: the phone is not in recovery (adb get-state: ${state:-none}); fastboot boot recovery/recovery.img, wait, run again" >&2; exit 1; }
+	[ "$state" = recovery -o "$state" = device ] || { echo "pull-bt-fw.sh: the phone is not in recovery (adb get-state: ${state:-none}); fastboot boot recovery/recovery.img, wait, run again" >&2; exit 1; }
 	dev=$(adb shell 'for d in /dev/block/by-name/bluetooth /dev/block/by-name/bluetooth_a /dev/block/bootdevice/by-name/bluetooth; do [ -e $d ] && readlink -f $d && break; done' 2>/dev/null | tr -d '\r')
 	[ -n "$dev" ] || { echo "pull-bt-fw.sh: no bluetooth partition on the phone (adb shell ls /dev/block/by-name shows them)" >&2; exit 1; }
 	size=$(adb shell "blockdev --getsize64 $dev 2>/dev/null || cat /sys/class/block/${dev##*/}/size" | tr -d '\r')
