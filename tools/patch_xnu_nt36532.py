@@ -10,9 +10,9 @@ import subprocess
 import tempfile
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SRC_KERNEL = f"{BASE}/xnu/out/kernel.development.pipa"
-DST_KERNEL = f"{BASE}/xnu/out/kernel.development.pipa.nop"
-BAK_KERNEL = f"{BASE}/xnu/out/kernel.development.pipa.nop.bak_pre532"
+SRC_KERNEL = os.environ.get("NVT_KERNEL", f"{BASE}/xnu/out/kernel.development.sweet")
+DST_KERNEL = SRC_KERNEL + ".nop"
+BAK_KERNEL = SRC_KERNEL + ".nop.bak_pre532"
 
 
 def asm_at(vma, code_lines):

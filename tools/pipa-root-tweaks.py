@@ -64,7 +64,7 @@ sweetnull=backboardd,SpringBoard,com.apple.datamigrator (p_name, full length).
 """
 import glob, hashlib, os, plistlib, shutil, struct, sys, uuid
 
-BUILD, VERSION = '20H392', '16.7.16'
+BUILD, VERSION = '20G81', '16.6.1'
 MOBILE = 501
 SWEET_ECID, CHIP_ID = 0x5357454554000001, 0x8015      # tools/mkadt.py /chosen
 
