@@ -1,0 +1,19 @@
+--- a/iokit/Kernel/arm/hid/SweetHID.cpp
++++ b/iokit/Kernel/arm/hid/SweetHID.cpp
+@@ -471,5 +471,16 @@
+ 		ly = ly < 0 ? 0 : ly > fLogicalH - 1 ? fLogicalH - 1 : ly;
+ 		nx = (IOFixed)(((int64_t)x << 16) / 1080);
+ 		ny = (IOFixed)((ly << 16) / fLogicalH);
+ 	}
++	/*
++	 * (xnu 0187) Piecewise Y by X half + bounds: the left half of the glass delivered Y one row high (the
++	 * split-half residual); the right half and the centre were exact. Same IOFixed step both halves, Y
++	 * piecewise on the X half, bounded by the glass spans (x 16..1771, y 52..2875); +320 one-row shear for
++	 * x < 916, clamped <= 2879. Raw Y top-down (y - fOffY - 52), display Y scaled back from raw Y.
++	 */
++	if (x < 916) {
++		int64_t ly17 = ((int64_t)(y - fOffY - 52) * 25) / 24;
++		ly17 = ly17 < 0 ? 0 : ly17 > fLogicalH - 1 ? fLogicalH - 1 : ly17;
++		ny = (IOFixed)((ly17 << 16) / fLogicalH);
++	}
+ 	bool moved = down && (nx != fX[finger] || ny != fY[finger]);
