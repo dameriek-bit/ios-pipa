@@ -50,3 +50,25 @@
 - The left-half shear fix: also source-level now (the retarget tool makes ANY kernel patchable)
 - GPU polish: need the user's specific symptoms
 - Sound + the rest of the wallpapers: research/wallpaper/files-2.txt on any later boot
+
+## THE BLOCKER FOUND (Nov 18, 04:5x): the compiler version
+The merged kernel (run 44205694207) was built with a DIFFERENT Xcode than the Nov 3 kernel
+(the runner image updated) → the instruction encodings at the touch patch sites differ →
+the byte-pattern asserts fail (caught at the corner box 0xaee0a4, got fd7b41a9...).
+The retarget-by-symbols WORKS (74+37 addresses computed correctly) — only the patterns break.
+
+## THE FIRST COMMAND TOMORROW: get the Nov 3 build's exact Xcode
+    gh api -H "Accept: application/vnd.github+json" \
+      /repos/nishant713/ios-pipa/actions/runs/41685645418/logs > /tmp/nov3-logs.zip
+    python3 - <<'PY'
+    import zipfile, re
+    z = zipfile.ZipFile('/tmp/nov3-logs.zip')
+    for name in z.namelist():
+        if 'build' not in name.lower(): continue
+        for m in re.findall(r'/Applications/Xcode[_0-9.]+\.app', z.read(name).decode(errors='replace')):
+            print(m)
+    PY
+(NOTE: the run is on nishant713/ios-pipa, NOT the fork — the first attempt 404'd because the fork was used.)
+Then: pin THAT Xcode in .github/workflows/xnu.yml (the pin step exists — change 16.0 to the found
+version), push, dispatch, and run the SAME chain from STEP 1 of this guide. Same compiler = the same
+bytes = the patterns match = the patchers work as-is.
