@@ -55,6 +55,9 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
+      # (pipa) pin the Nov-3-era codegen: the binary touch patchers are byte-pattern-sensitive
+      - name: Pin Xcode 16.0
+        run: sudo xcode-select -s /Applications/Xcode_16.0.app
 
       - name: Fetch build script
         run: |
