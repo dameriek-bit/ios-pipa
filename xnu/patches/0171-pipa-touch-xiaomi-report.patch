@@ -1,0 +1,107 @@
+From: pipa
+Subject: [PATCH 0171] pipa touch: Xiaomi nt36532 report parse + pipa glass delivery in source
+
+Port the touch report path to Xiaomi's stock MIUI 14 nt36532 driver semantics and
+replace the apollo fit-band delivery with pipa's measured glass mapping.
+
+--- a/bsd/dev/sweet_touch.c
++++ b/bsd/dev/sweet_touch.c
+@@ -98,8 +98,8 @@
+ #define TOUCH_SPI_CFG        ((1u << 2) | (2u << 6))  /* func qup4, 6 mA, no pull */
+ 
+ #define TOUCH_MAX_FINGERS    10
+-#define TOUCH_ABS_X          1080
+-#define TOUCH_ABS_Y          2400
++#define TOUCH_ABS_X          1800	/* pipa: the 1800x2880 panel, (xnu 0171) */
++#define TOUCH_ABS_Y          2880
+ 
+ /* NT36xxx SPI protocol (Novatek nt36xxx_spi driver) */
+ #define NVT_SPI_HDR          2              /* address byte + dummy byte */
+@@ -756,9 +756,13 @@
+ 
+ /* ---------- report parser ---------- */
+ /*
+- * NT36xxx event buffer, 6 bytes per finger (nvt_ts_work_func):
+- *   [0] id << 3 | status (1 down, 2 move), id 1-based
+- *   [1] x[11:4]  [2] y[11:4]  [3] x[3:0] << 4 | y[3:0]
++ * NT36532 event buffer, 6 bytes per finger (Xiaomi nt36xxx.c, pipa-t-oss,
++ * NVT_SUPER_RESOLUTION_N = 10):
++ *   [0] id << 3 | status (1 down, 2 move), id 1-based, 0 = empty slot
++ *   [1..2] raw x, 16-bit little-endian, 0.1 px units
++ *   [3..4] raw y, 16-bit little-endian
++ * Xiaomi reports the SR value undivided with the ABS range set to abs_max*10-1;
++ * dividing by 10 keeps the pixel convention downstream.
+  */
+ static void
+ touch_parse_report(const uint8_t *r, size_t len)
+@@ -778,14 +782,14 @@
+ 	}
+ 
+ 	uint32_t now = 0;
+-	for (unsigned i = 0; i < TOUCH_MAX_FINGERS && 6u * i + 3u < len; ++i) {
++	for (unsigned i = 0; i < TOUCH_MAX_FINGERS && 6u * i + 4u < len; ++i) {
+ 		const uint8_t *p = r + 6u * i;
+ 		unsigned id = p[0] >> 3, status = p[0] & 7u;
+ 		if (id == 0 || id > TOUCH_MAX_FINGERS || (status != 1 && status != 2))
+ 			continue;
+ 		id -= 1;
+-		int x = (p[1] << 4) | (p[3] >> 4);
+-		int y = (p[2] << 4) | (p[3] & 0x0f);
++		int x = ((p[1] << 8) | p[2]) / 10;
++		int y = ((p[3] << 8) | p[4]) / 10;
+ 		if (x >= TOUCH_ABS_X) x = TOUCH_ABS_X - 1;
+ 		if (y >= TOUCH_ABS_Y) y = TOUCH_ABS_Y - 1;
+ 		now |= 1u << id;
+--- a/iokit/Kernel/arm/hid/SweetHID.cpp
++++ b/iokit/Kernel/arm/hid/SweetHID.cpp
+@@ -473,25 +473,23 @@
+ 	if (finger < 0 || finger >= SWEET_TOUCH_FINGERS) {
+ 		return;
+ 	}
+-	x = x < 0 ? 0 : (x > 1079 ? 1079 : x);
+-	y = y < 0 ? 0 : (y > 2399 ? 2399 : y);
++	x = x < 0 ? 0 : (x > 1799 ? 1799 : x);
++	y = y < 0 ? 0 : (y > 2879 ? 2879 : y);
+ 
+ 	IOLockLock(fLock);
+ 	bool was = fDown[finger];
+-	/* Panel pixels -> the presented 1125x2436 display (SweetFramebuffer.cpp). */
+-	IOFixed nx = (IOFixed)(((int64_t)(x + fOffX) << 16) / fLogicalW);
+-	IOFixed ny = (IOFixed)(((int64_t)(y + fOffY) << 16) / fLogicalH);
+-	if (fFit) {
+-		/*
+-		 * (xnu 0150) The display is the whole 1125x2436 scaled by 24/25 onto the panel, 2338 lines with 31 black
+-		 * above: across, the panel's width is the display's; down, the line in the picture scaled back.
+-		 */
+-		int64_t ly = ((int64_t)y - fFitBand) * 25 / 24;
+-
+-		ly = ly < 0 ? 0 : ly > fLogicalH - 1 ? fLogicalH - 1 : ly;
+-		nx = (IOFixed)(((int64_t)x << 16) / 1080);
+-		ny = (IOFixed)((ly << 16) / fLogicalH);
+-	}
++	/*
++	 * (xnu 0171) pipa: the digitizer's active glass area is raw x 16..1771, y 52..2875
++	 * (NT36532 on the 1800x2880 panel); raw X arrives mirrored vs the panel, raw Y is
++	 * already top-down. Deliver panel pixels normalized over the 1800x2880 panel; the
++	 * digitizer covers the panel 1:1 (no apollo fit band).
++	 */
++	int gx = x - 16;
++	int gy = y - 52;
++	gx = gx < 0 ? 0 : gx;
++	gy = gy < 0 ? 0 : gy;
++	IOFixed nx = (IOFixed)(((int64_t)(1755 - gx) << 16) / 1755);
++	IOFixed ny = (IOFixed)(((int64_t)gy << 16) / 2823);
+ 	bool moved = down && (nx != fX[finger] || ny != fY[finger]);
+ 	if (was == down && !moved) {
+ 		IOLockUnlock(fLock);
+@@ -503,8 +501,8 @@
+ 		sweet_cpufreq_boost(0);
+ 	}
+ 	if (!was && down) {
+-		fEdge[finger] = x < SWEET_TOUCH_EDGE_PX || x > 1079 - SWEET_TOUCH_EDGE_PX ||
+-		    y < SWEET_TOUCH_EDGE_PX || y > 2399 - SWEET_TOUCH_EDGE_PX;
++		fEdge[finger] = x < SWEET_TOUCH_EDGE_PX || x > 1799 - SWEET_TOUCH_EDGE_PX ||
++		    y < SWEET_TOUCH_EDGE_PX || y > 2879 - SWEET_TOUCH_EDGE_PX;
+ 	}
+ 
+ 	collection = IOHIDEvent::digitizerEvent(now, 0, kIOHIDDigitizerTransducerTypeHand, false, 0, 0, 0);

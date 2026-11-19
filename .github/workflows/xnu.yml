@@ -56,6 +56,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # (xnu 0171) the touch probe/download byte patterns expect Xcode 16.0 codegen:
+      # pin it (macos-15 otherwise picks the newest runner Xcode).
+      - name: Pin Xcode 16.0
+        run: sudo xcode-select -s /Applications/Xcode_16.0.app
+
       - name: Fetch build script
         run: |
           git init -q dxb
