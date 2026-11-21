@@ -1,0 +1,27 @@
+pipa: touch axes to the real glass spans (1771x2875)
+
+sweet_touch.c clamped raw touch coordinates to TOUCH_ABS_X/Y = 1080x2400
+(the alioth glass). The pipa glass spans x 16..1771, y 52..2875 (measured,
+see 0187), so every touch past 1080x2400 was clamped away and only the
+top-left corner of the glass was usable.
+
+SweetHID.cpp normalized X against 1080 as well; divide by the real pipa
+glass width (1771) instead, matching the measured span. The 0187 piecewise
+Y stays as is (it was measured on this glass).
+
+---
+--- a/bsd/dev/sweet_touch.c
++++ b/bsd/dev/sweet_touch.c
+@@ -93,3 +93,3 @@
+ #define TOUCH_MAX_FINGERS    10
+-#define TOUCH_ABS_X          1080
+-#define TOUCH_ABS_Y          2400
++#define TOUCH_ABS_X          1772
++#define TOUCH_ABS_Y          2876
+--- a/iokit/Kernel/arm/hid/SweetHID.cpp
++++ b/iokit/Kernel/arm/hid/SweetHID.cpp
+@@ -492,3 +492,3 @@
+-		nx = (IOFixed)(((int64_t)x << 16) / 1080);
++		nx = (IOFixed)(((int64_t)x << 16) / 1771);
+ 		ny = (IOFixed)((ly << 16) / fLogicalH);
+ 	}
