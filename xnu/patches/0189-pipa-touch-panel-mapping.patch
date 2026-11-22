@@ -1,0 +1,89 @@
+--- a/iokit/Kernel/arm/hid/SweetHID.cpp
++++ b/iokit/Kernel/arm/hid/SweetHID.cpp
+@@ -456,70 +456,62 @@
+ 	/* The digitizer covers the main display (backboardd maps it 1:1). */
+ 	setProperty("DisplayIntegrated", kOSBooleanTrue);
+ 	setProperty("SurfaceWidth", (unsigned long long)(68 << 16), 32);	/* mm, 16.16 */
+ 	setProperty("SurfaceHeight", (unsigned long long)(151 << 16), 32);
+ 	gSweetTouch = this;
+ 	registerService();
+ 	IOLog("SWEET HID: touch registered\n");
+ 	return true;
+ }
+ 
+ void
+ SweetHIDTouch::touch(int finger, bool down, int x, int y)
+ {
+ 	uint64_t now = mach_absolute_time();
+ 	IOHIDEvent *collection;
+ 	bool any = false;
+ 
+ 	if (finger < 0 || finger >= SWEET_TOUCH_FINGERS) {
+ 		return;
+ 	}
+-	x = x < 0 ? 0 : (x > 1079 ? 1079 : x);
+-	y = y < 0 ? 0 : (y > 2399 ? 2399 : y);
++	x = x < 0 ? 0 : (x > 1799 ? 1799 : x);
++	y = y < 0 ? 0 : (y > 2879 ? 2879 : y);
+ 
+ 	IOLockLock(fLock);
+ 	bool was = fDown[finger];
+ 	/* Panel pixels -> the presented 1125x2436 display (SweetFramebuffer.cpp). */
+-	IOFixed nx = (IOFixed)(((int64_t)(x + fOffX) << 16) / fLogicalW);
+-	IOFixed ny = (IOFixed)(((int64_t)(y + fOffY) << 16) / fLogicalH);
+-	if (fFit) {
+-		/*
+-		 * (xnu 0150) The display is the whole 1125x2436 scaled by 24/25 onto the panel, 2338 lines with 31 black
+-		 * above: across, the panel's width is the display's; down, the line in the picture scaled back.
+-		 */
+-		int64_t ly = ((int64_t)y - fFitBand) * 25 / 24;
+-
+-		ly = ly < 0 ? 0 : ly > fLogicalH - 1 ? fLogicalH - 1 : ly;
+-		nx = (IOFixed)(((int64_t)x << 16) / 1080);
+-		ny = (IOFixed)((ly << 16) / fLogicalH);
+-	}
+ 	/*
+-	 * (xnu 0187) Piecewise Y by X half + bounds: the left half of the glass delivered Y one row high (the
+-	 * split-half residual); the right half and the centre were exact. Same IOFixed step both halves, Y
+-	 * piecewise on the X half, bounded by the glass spans (x 16..1771, y 52..2875); +320 one-row shear for
+-	 * x < 916, clamped <= 2879. Raw Y top-down (y - fOffY - 52), display Y scaled back from raw Y.
++	 * (xnu 0189) The pipa touch glass covers the panel 1800x2880 (SR/10 reports). The iOS frame
++	 * (1125x2436) is presented as 1080x2338 centered on the panel: x 360..1439, y 271..2608.
++	 * The glass maps into the frame 1:1 on both axes. The touch zones mirror Y on the left
++	 * half of the glass: the bottom taps open the top apps on the screen left half (the
++	 * observed dual-zone behavior), the right zone reads directly.
+ 	 */
+-	if (x < 916) {
+-		int64_t ly17 = ((int64_t)(y - fOffY - 52) * 25) / 24;
+-		ly17 = ly17 < 0 ? 0 : ly17 > fLogicalH - 1 ? fLogicalH - 1 : ly17;
+-		ny = (IOFixed)((ly17 << 16) / fLogicalH);
+-	}
++	int fx = x - 360;
++	int fy = y - 271;
++	if (x < 900) {
++		fy = 2337 - fy;
++	}
++	fx = fx < 0 ? 0 : (fx > 1124 ? 1124 : fx);
++	fy = fy < 0 ? 0 : (fy > 2337 ? 2337 : fy);
++	IOFixed nx = (IOFixed)((fx << 16) / 1125);
++	IOFixed ny = (IOFixed)((fy << 16) / 2436);
+ 	bool moved = down && (nx != fX[finger] || ny != fY[finger]);
+ 	if (was == down && !moved) {
+ 		IOLockUnlock(fLock);
+ 		return;
+ 	}
+ 	if (down) {
+ 		/* (xnu 0160) a finger is down or moving: the frames that answer it are next, so the
+ 		 * governor does not wait for its next sample to raise the clocks */
+ 		sweet_cpufreq_boost(0);
+ 	}
+ 	if (!was && down) {
+ 		fEdge[finger] = x < SWEET_TOUCH_EDGE_PX || x > 1079 - SWEET_TOUCH_EDGE_PX ||
+ 		    y < SWEET_TOUCH_EDGE_PX || y > 2399 - SWEET_TOUCH_EDGE_PX;
+ 	}
+ 
+ 	collection = IOHIDEvent::digitizerEvent(now, 0, kIOHIDDigitizerTransducerTypeHand, false, 0, 0, 0);
+ 	if (!collection) {
+ 		IOLockUnlock(fLock);
+ 		return;
+ 	}
